@@ -2,23 +2,10 @@
  * Flashing morse code LEDs.
  */
 
-// Use N-millisecond time divisions, 
-// flashing one division for a dot and three divisions for a dash
-// https://en.wikipedia.org/wiki/Morse_code
-// Example "A":
-// |   |   |   |   |   |   |   |   |   |
-// ****    ************
-// I need a word, which I can iterate through
-
-
-#define TIME_DIVISION_MILLIS 500  //todo: this is super slow
-#define VERBOSE false
-
-struct code
-{
-  unsigned char bits;
-  unsigned char len;
-};
+#define TIME_DIVISION_MILLIS 500  //milliseconds per morse time division
+#define VERBOSE false             //serial port verbosity
+#define SPECIAL_CODE " "          //repeat this for 200 50ms time divisions at startup
+#define SPECIAL_CODE_LEN_CHARS 1  //set to the length of the string in the special code
 
 /*
  * -----------------------------------------------------------------
@@ -29,76 +16,82 @@ struct code
  * with input validations.
  * -----------------------------------------------------------------
  */
+
+// code - This struct represents the encoding of a single Morse character
+struct code
+{
+  unsigned char bits; // right to left bit encoded, 1=-; 0=. 
+  unsigned char len;  //only len rightmost bits valid
+};
+
 #define ASCII_FIRST_CHARACTER_OFFSET 32
 
-const code ascii_to_morse[] = { // right to left bit encoded, 1=-; 0=. , only len rightmost bits valid
-  /*   = " "       */ { 0b000000, 0},
-  /* ! = "-.-.--"  */ { 0b110101, 6},
-  /* " = ".-..-."  */ { 0b010010, 6},
-  /* # = ""        */ { 0b111111, 0},
-  /* $ = ".-..."   */ { 0b000010, 5},
-  /* % = ""        */ { 0b111111, 0},
-  /* & = ""        */ { 0b111111, 0}, 
-  /* ' = ".----."  */ { 0b011110, 6},
-  /* ( = "-.--."   */ { 0b001101, 5},
-  /* ) = "-.--.-"  */ { 0b101101, 6},
-  /* * = ""        */ { 0b111111, 0},
-  /* + = ".-.-."   */ { 0b001010, 5},
-  /* , = "--..--"  */ { 0b110011, 6},
-  /* - = "-....-"  */ { 0b100001, 6},
-  /* . = ".-.-.-"  */ { 0b101010, 6},
-  /* / = "-..-."   */ { 0b001001, 5},
-  /* 0 = "-----"   */ { 0b011111, 5},
-  /* 1 = ".----"   */ { 0b011110, 5},
-  /* 2 = "..---"   */ { 0b011100, 5},
-  /* 3 = "...--"   */ { 0b011000, 5},
-  /* 4 = "....-"   */ { 0b010000, 5},
-  /* 5 = "....."   */ { 0b000000, 5},
-  /* 6 = "-...."   */ { 0b000001, 5},
-  /* 7 = "--..."   */ { 0b000011, 5},
-  /* 8 = "---.."   */ { 0b000111, 5},
-  /* 9 = "----."   */ { 0b001111, 5},
-  /* : = "---..."  */ { 0b000111, 6},
-  /* ; = "-.-.-."  */ { 0b010101, 6},
-  /* < = ""        */ { 0b111111, 0},
-  /* = = "-...-"   */ { 0b010001, 5},
-  /* > = ""        */ { 0b111111, 0},
-  /* ? = "..--.."  */ { 0b001100, 6},
-  /* @ = ".--.-."  */ { 0b010110, 6},
-  /* A = ".-"      */ { 0b000010, 2},
-  /* B = "-..."    */ { 0b000001, 4},
-  /* C = "-.-."    */ { 0b000101, 4},
-  /* D = "-.."     */ { 0b000001, 3},
-  /* E = "."       */ { 0b000000, 1},
-  /* F = "..-."    */ { 0b000100, 4},
-  /* G = "--."     */ { 0b000011, 3},
-  /* H = "...."    */ { 0b000000, 4},
-  /* I = ".."      */ { 0b000000, 2},
-  /* J = ".---"    */ { 0b001110, 4},
-  /* K = "-.-"     */ { 0b000101, 3},
-  /* L = ".-.."    */ { 0b000010, 4},
-  /* M = "--"      */ { 0b000011, 2},
-  /* N = "-."      */ { 0b000001, 2},
-  /* O = "---"     */ { 0b000111, 3},
-  /* P = ".--."    */ { 0b000110, 4},
-  /* Q = "--.-"    */ { 0b001011, 4},
-  /* R = ".-."     */ { 0b000010, 3},
-  /* S = "..."     */ { 0b000000, 3},
-  /* T = "-"       */ { 0b000001, 1},
-  /* U = "..-"     */ { 0b000100, 3},
-  /* V = "...-"    */ { 0b001000, 4},
-  /* W = ".--"     */ { 0b000110, 3},
-  /* X = "-..-"    */ { 0b001001, 4},
-  /* Y = "-.--"    */ { 0b001101, 4},
-  /* Z = "--.."    */ { 0b000011, 4}
-  };
-
+const code ascii_to_morse[] = { // right to left bit encoded, 1=-; 0=.
+/*   = " "       */ { 0b000000, 0},
+/* ! = "-.-.--"  */ { 0b110101, 6},
+/* " = ".-..-."  */ { 0b010010, 6},
+/* # = ""        */ { 0b111111, 0},
+/* $ = ".-..."   */ { 0b000010, 5},
+/* % = ""        */ { 0b111111, 0},
+/* & = ""        */ { 0b111111, 0}, 
+/* ' = ".----."  */ { 0b011110, 6},
+/* ( = "-.--."   */ { 0b001101, 5},
+/* ) = "-.--.-"  */ { 0b101101, 6},
+/* * = ""        */ { 0b111111, 0},
+/* + = ".-.-."   */ { 0b001010, 5},
+/* , = "--..--"  */ { 0b110011, 6},
+/* - = "-....-"  */ { 0b100001, 6},
+/* . = ".-.-.-"  */ { 0b101010, 6},
+/* / = "-..-."   */ { 0b001001, 5},
+/* 0 = "-----"   */ { 0b011111, 5},
+/* 1 = ".----"   */ { 0b011110, 5},
+/* 2 = "..---"   */ { 0b011100, 5},
+/* 3 = "...--"   */ { 0b011000, 5},
+/* 4 = "....-"   */ { 0b010000, 5},
+/* 5 = "....."   */ { 0b000000, 5},
+/* 6 = "-...."   */ { 0b000001, 5},
+/* 7 = "--..."   */ { 0b000011, 5},
+/* 8 = "---.."   */ { 0b000111, 5},
+/* 9 = "----."   */ { 0b001111, 5},
+/* : = "---..."  */ { 0b000111, 6},
+/* ; = "-.-.-."  */ { 0b010101, 6},
+/* < = ""        */ { 0b111111, 0},
+/* = = "-...-"   */ { 0b010001, 5},
+/* > = ""        */ { 0b111111, 0},
+/* ? = "..--.."  */ { 0b001100, 6},
+/* @ = ".--.-."  */ { 0b010110, 6},
+/* A = ".-"      */ { 0b000010, 2},
+/* B = "-..."    */ { 0b000001, 4},
+/* C = "-.-."    */ { 0b000101, 4},
+/* D = "-.."     */ { 0b000001, 3},
+/* E = "."       */ { 0b000000, 1},
+/* F = "..-."    */ { 0b000100, 4},
+/* G = "--."     */ { 0b000011, 3},
+/* H = "...."    */ { 0b000000, 4},
+/* I = ".."      */ { 0b000000, 2},
+/* J = ".---"    */ { 0b001110, 4},
+/* K = "-.-"     */ { 0b000101, 3},
+/* L = ".-.."    */ { 0b000010, 4},
+/* M = "--"      */ { 0b000011, 2},
+/* N = "-."      */ { 0b000001, 2},
+/* O = "---"     */ { 0b000111, 3},
+/* P = ".--."    */ { 0b000110, 4},
+/* Q = "--.-"    */ { 0b001011, 4},
+/* R = ".-."     */ { 0b000010, 3},
+/* S = "..."     */ { 0b000000, 3},
+/* T = "-"       */ { 0b000001, 1},
+/* U = "..-"     */ { 0b000100, 3},
+/* V = "...-"    */ { 0b001000, 4},
+/* W = ".--"     */ { 0b000110, 3},
+/* X = "-..-"    */ { 0b001001, 4},
+/* Y = "-.--"    */ { 0b001101, 4},
+/* Z = "--.."    */ { 0b000011, 4}
+};
 
 class MorseAlphabet
 {
-  char code_list_length = 59;  //length of array defined above
-
-
+  private:
+  // Retrieve the index in the array for a given ascii character
   unsigned int get_code_id(char letter)
   {
     unsigned int rv;
@@ -112,18 +105,19 @@ class MorseAlphabet
       Serial.println("Out of bounds character detected: "); Serial.println(letter);
       rv = 0;  //return space if out of bounds
     }
-
     return rv;
   }
 
 
   public:
+  // Get the length of the morse code for the given letter
   unsigned char get_code_len(char letter)
   {
     unsigned int code_id = get_code_id(letter);
     return ascii_to_morse[code_id].len;
   }
-  
+
+  // get the bitfield of the morse code for the given letter
   unsigned char get_code_bits(char letter)
   {
     unsigned int code_id = get_code_id(letter);
@@ -150,8 +144,6 @@ class MorseAlphabet
     return get_code_bit(letter, bit_offset);
   }
 };
-
-
 
 
 /*
@@ -216,21 +208,21 @@ private:
   void dot()
   {
     blink_state=dotting;
-    time_div_countdown = 1;
+    time_div_countdown = 1; // 1 time division per dot
     digitalWrite(this->output_pin, HIGH);
   }
 
   void dash()
   {
     blink_state=dashing;
-    time_div_countdown = 3;
+    time_div_countdown = 3; // 3 time divisions per dash
     digitalWrite(this->output_pin, HIGH);
   }
 
   void word_offset()
   {
     blink_state=ofsetting;
-    time_div_countdown=7;
+    time_div_countdown=7;  // 7 time divisions between words
     digitalWrite(this->output_pin, LOW);
   }
   
@@ -253,7 +245,7 @@ public:
             Serial.print("new letter: "); Serial.write(this->word_string[this->code_offset]); Serial.println("");
             this->bit_offset = 0; //start at beginning of that next letter
             //   if I have run out of letters, call (offset) which will put me into offsetting state
-            if(this->code_offset >= this->len - 1 )  //todo: invert this to make cleaner
+            if(this->code_offset >= this->len - 1 )
             {
               //I have run out of letters call an offset, which will lead to me restarting.
               this->word_offset();
@@ -266,8 +258,6 @@ public:
           }
           else  //I still have dots or dashes to blink, start the next one
           {
-            // I have len bits remaining
-
             // call dot() or dash()
             if( alpha.is_dash(this->word_string[this->code_offset], this->bit_offset) )
               dash();
@@ -295,10 +285,10 @@ public:
           break;
         default:
           //todo: put a serial println in here to indicate a bug.
+          Serial.println("ERROR: An unkown state has been encountered.  State machine failed.");
           break;
       }
   }
-  
 };
 
 /*
@@ -312,6 +302,7 @@ public:
 WordFlasher *evan;
 WordFlasher * cooper;
 WordFlasher * oliver;
+WordFlasher * special_code;
 
 void setup() {
   // Setup the debug serial port
@@ -322,6 +313,15 @@ void setup() {
   cooper = new WordFlasher("COOPER",6, 4);  //todo: make work for multipe LED's
   oliver = new WordFlasher("OLIVER",6, 5);  //todo: make work for multiple LED's
 
+  //flash this only when I push the reset button.
+  special_code = new WordFlasher(SPECIAL_CODE, SPECIAL_CODE_LEN_CHARS, 6);//it's ok to share this pin.
+
+  //only do 200 time divisions for the special startup code
+  for(int i=0; i<200; i++)
+  {
+    special_code->runflash();
+    delay(50);
+  }
 }
 
 /*
