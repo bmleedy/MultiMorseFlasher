@@ -162,7 +162,6 @@ MorseAlphabet alpha;
 class WordFlasher
 {
 private:
-//todo: move all of this to header
   enum blinkstate {
     notstarted,
     dotting,
@@ -284,7 +283,6 @@ public:
           this->space(1);
           break;
         default:
-          //todo: put a serial println in here to indicate a bug.
           Serial.println("ERROR: An unkown state has been encountered.  State machine failed.");
           break;
       }
@@ -310,8 +308,8 @@ void setup() {
   
   // put your setup code here, to run once:
   evan   = new WordFlasher("EVAN",4, 6);
-  cooper = new WordFlasher("COOPER",6, 4);  //todo: make work for multipe LED's
-  oliver = new WordFlasher("OLIVER",6, 5);  //todo: make work for multiple LED's
+  cooper = new WordFlasher("COOPER",6, 4);
+  oliver = new WordFlasher("OLIVER",6, 5);
 
   //flash this only when I push the reset button.
   special_code = new WordFlasher(SPECIAL_CODE, SPECIAL_CODE_LEN_CHARS, 6);//it's ok to share this pin.
